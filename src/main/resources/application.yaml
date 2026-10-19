@@ -1,3 +1,26 @@
 spring:
   application:
     name: student-api
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME:studentdb}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: student-api
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+
+  bootstrap:
+    username: ${APP_BOOTSTRAP_USERNAME}
+    password: ${APP_BOOTSTRAP_PASSWORD}
