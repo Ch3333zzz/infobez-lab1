@@ -524,7 +524,7 @@ Date: Mon, 19 Oct 2026 07:35:27 GMT
 
 ## Pipeline
 
-[ссылка на последний успешный pipeline](https://github.com/Ch3333zzz/infobez-lab1/actions/runs/39225855639)
+[ссылка на последний успешный pipeline]()
 
 
 

@@ -109,7 +109,7 @@ jobs:
         run: echo "date=$(date -u +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
       - name: Restore OWASP Dependency-Check database
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-dc13.0.0-${{ steps.cache-date.outputs.date }}
@@ -142,13 +142,6 @@ jobs:
           fi
 
           ./mvnw "${args[@]}"
-
-      - name: Save OWASP Dependency-Check database
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-dc13.0.0-${{ steps.cache-date.outputs.date }}
 
       - name: Upload Dependency-Check reports
         if: always()
