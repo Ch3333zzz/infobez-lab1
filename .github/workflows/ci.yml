@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Build and tests
@@ -88,7 +91,7 @@ jobs:
   sca:
     name: SCA - OWASP Dependency-Check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -101,9 +104,23 @@ jobs:
           java-version: "21"
           cache: maven
 
+      - name: Get cache date
+        id: cache-date
+        run: echo "date=$(date -u +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore OWASP Dependency-Check database
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-dc13.0.0-${{ steps.cache-date.outputs.date }}
+          restore-keys: |
+            ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-dc13.0.0-
+            ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-
+            ${{ runner.os }}-owasp-nvd-
+
       - name: Scan dependencies for known vulnerabilities
         env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          NVD_API_KEY: ${{ github.event_name != 'pull_request' && secrets.NVD_API_KEY || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -111,18 +128,27 @@ jobs:
           args=(
             --batch-mode
             --no-transfer-progress
+            -DnvdValidForHours=24
             org.owasp:dependency-check-maven:13.0.0:check
             -Dformats=HTML,JSON
             -DfailBuildOnCVSS=7
           )
 
           if [[ -n "${NVD_API_KEY:-}" ]]; then
-            args+=("-DnvdApiKey=${NVD_API_KEY}")
+            echo "NVD API key is configured."
+            args+=("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY")
           else
-            echo "::warning::NVD_API_KEY is not configured; the scan may take longer."
+            echo "::warning::NVD_API_KEY is unavailable; the scan may take longer."
           fi
 
           ./mvnw "${args[@]}"
+
+      - name: Save OWASP Dependency-Check database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: ${{ runner.os }}-owasp-nvd-${{ hashFiles('**/pom.xml') }}-dc13.0.0-${{ steps.cache-date.outputs.date }}
 
       - name: Upload Dependency-Check reports
         if: always()
