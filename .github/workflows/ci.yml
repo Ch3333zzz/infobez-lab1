@@ -1,0 +1,136 @@
+name: Student API CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: studentdb
+          POSTGRES_USER: studentapp
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U studentapp -d studentdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_NAME: studentdb
+      DB_USER: studentapp
+      DB_PASSWORD: ci-only-password
+      JWT_SECRET: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      JWT_EXPIRATION_MINUTES: "60"
+      APP_BOOTSTRAP_USERNAME: ci-admin
+      APP_BOOTSTRAP_PASSWORD: ci-only-password
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build and run tests
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+
+  sast:
+    name: SAST - SpotBugs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Compile and analyze Java code
+        run: >-
+          ./mvnw
+          --batch-mode
+          --no-transfer-progress
+          -DskipTests
+          clean package
+          com.github.spotbugs:spotbugs-maven-plugin:4.10.5.0:check
+          -Dspotbugs.xmlOutput=true
+          -Dspotbugs.htmlOutput=true
+
+      - name: Upload SpotBugs report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: spotbugs-report
+          path: |
+            target/spotbugsXml.xml
+            target/**/spotbugs*.html
+          if-no-files-found: warn
+          retention-days: 14
+
+  sca:
+    name: SCA - OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Scan dependencies for known vulnerabilities
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          args=(
+            --batch-mode
+            --no-transfer-progress
+            org.owasp:dependency-check-maven:13.0.0:check
+            -Dformats=HTML,JSON
+            -DfailBuildOnCVSS=7
+          )
+
+          if [[ -n "${NVD_API_KEY:-}" ]]; then
+            args+=("-DnvdApiKey=${NVD_API_KEY}")
+          else
+            echo "::warning::NVD_API_KEY is not configured; the scan may take longer."
+          fi
+
+          ./mvnw "${args[@]}"
+
+      - name: Upload Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-check-report
+          path: |
+            target/dependency-check-report.html
+            target/dependency-check-report.json
+          if-no-files-found: warn
+          retention-days: 14
